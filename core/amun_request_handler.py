@@ -32,8 +32,11 @@ import shellcode_mgr_core
 import download_core
 import amun_logging
 
-class amun_reqhandler(asynchat.async_chat):
+# globle varible to record the attacker ip
+attacker_ip = {}
 
+class amun_reqhandler(asynchat.async_chat):
+	
 	def __init__(self, divLogger):
 		self.remote_ip = None
 		self.remote_port = None
@@ -56,6 +59,8 @@ class amun_reqhandler(asynchat.async_chat):
 		self.proxyResult = None
 		self.sendRequest = ""
 		self.log_obj = amun_logging.amun_logging("amun_request_handler", divLogger['requestHandler'])
+		self.telnet = False
+		#self.attacker_ip = {}
 
 	def __del__(self):
 		pass
@@ -149,6 +154,7 @@ class amun_reqhandler(asynchat.async_chat):
 			try:
 				self.shutdown(socket.SHUT_RDWR)
 				self.origin_socket.close()
+				self.log_obj.log("close", 6, "info", True, True)
 			except:
 				pass
 			self.close()
@@ -224,6 +230,24 @@ class amun_reqhandler(asynchat.async_chat):
 		if len(welcome_list)>0:
 			self.log_obj.log("sending welcome message: %s" % ([welcome_list[0]]), 6, "crit", False, False)
 			rplmess = "%s\r\n" % (welcome_list[0])
+
+			### telnet prompt 
+			if welcome_list[0].endswith('telnet'):
+				self.telnet = True
+				if self.remote_ip not in attacker_ip:
+					self.log_obj.log("attaker first attack", 6, "info", False, True)
+					self.log_obj.log("attacker_ip begin content: %s" % (str(attacker_ip)), 6, "info", False, True)
+					system_type = random.choice(['Windows', 'Linux'])
+					self.add_attacker_info(self.remote_ip,system_type)
+					if attacker_ip[self.remote_ip] == 'Windows':
+						rplmess = self.telnet_welcome_mess('Windows')
+					else:
+						rplmess = self.telnet_welcome_mess('Linux')
+				else:
+					self.log_obj.log("attaker not the first attack", 6, "info", False, True)
+					rplmess = self.telnet_welcome_mess(attacker_ip[self.remote_ip])
+			else:
+			    rplmess = "%s\r\n"%(welcome_list[0])
 			try:
 				bytesTosend = len(rplmess)
 				while bytesTosend>0:
@@ -237,6 +261,15 @@ class amun_reqhandler(asynchat.async_chat):
 					del self.event_dict['initial_connections'][self.identifier]
 				self.connected = False
 				self.close()
+
+	def telnet_welcome_mess(self, system_type):
+		if system_type == 'Windows':
+			return "Microsoft Windows XP [Version 5.1.2600]\n(C) Copyright 1985-2001 Microsoft Corp.\n\nC:\\WINNT\\System32>"
+		else:
+			return "Linux version 2.6.32-573.26.1.el6.x86_64 (mockbuild@x86-023.build.eng.bos.redhat.com) \nKernel 2.6.32-573.26.1.el6.x86_64 on an x86_64\n\n[root@localhost ~]#"
+
+	def add_attacker_info(self, ip, system_type):
+		attacker_ip[ip] = system_type
 
 	def set_new_socket_connection(self):
 		### (0) Timestamp (1) Socket
@@ -290,6 +323,7 @@ class amun_reqhandler(asynchat.async_chat):
 				if not self.proxyTimedOut:
 					try:
 						self.log_obj.log("sending data to proxy host %s (%s)" % (self.proxytoIP, bytesTosend), 6, "debug", False, True)
+						
 						while bytesTosend>0:
 							bytes_send = self.origin_socket.send(self.sendRequest)
 							bytesTosend = bytesTosend - bytes_send
@@ -370,6 +404,7 @@ class amun_reqhandler(asynchat.async_chat):
 			state ="amun_not_set"
 			### handle vulnerabilities
 			if self.proxyResult == None:
+				# here 
 				(result,state) = self.handle_vulnerabilities(data, vuln_modulList)
 				### update connection entry
 				self.update_existing_connection(vuln_modulList)
@@ -617,10 +652,20 @@ class amun_reqhandler(asynchat.async_chat):
 			result['shellresult'] = "None"
 			result['vuln_modul'] = "None"
 			result['stage_list'] = []
+			result['system_type'] = "None"
+			
 
 			for key in vuln_modulList.keys():
 				vuln_modul = vuln_modulList[key]
-				vulnResult = vuln_modul.incoming(data, len(data), self.remote_ip, self.divLogger['vulnerability'], self.random_reply, self.ownIP)
+
+				# call vuln incoming function
+				if self.telnet:
+					system_type = attacker_ip[self.remote_ip]
+					self.log_obj.log("Contents of attacker_ip: %s" % (str(attacker_ip)), 9, "info", False, True)
+					vulnResult = vuln_modul.incoming(data, len(data), self.remote_ip, self.divLogger['vulnerability'], self.random_reply, self.ownIP, system_type)
+				
+				else: 
+					vulnResult = vuln_modul.incoming(data, len(data), self.remote_ip, self.divLogger['vulnerability'], self.random_reply, self.ownIP)
 				### not accepted -> remove from vuln list
 				if not vulnResult['accept']:
 					self.log_obj.log("%s leaving communication (stage: %s bytes: %s)" % (vulnResult['vulnname'],vulnResult['stage'],len(data)), 6, "debug", False, False)
@@ -630,9 +675,9 @@ class amun_reqhandler(asynchat.async_chat):
 					#print "SHELLCODE --> %s" % len(vulnResult['shellcode'])
 					### if result true and we have a reply -> send reply
 					if vulnResult['result'] and vulnResult['reply']!="None":
-						if vulnResult['reply'].endswith('#'):
+						if vulnResult['reply'].endswith('#') or vulnResult['reply'].endswith('>'):
 							rplmess = "%s" % (vulnResult['reply'])
-						if vulnResult['reply'].endswith('*'):
+						elif vulnResult['reply'].endswith('*'):
 							rplmess = "%s" % (vulnResult['reply'][:-1])
 						else:
 							rplmess = "%s\r\n" % (vulnResult['reply'])
