@@ -23,6 +23,7 @@ import traceback
 import StringIO
 import sys
 import amun_logging
+import requests
 
 class vuln:
     def __init__(self):
@@ -194,33 +195,38 @@ class vuln:
         if data == "exit":
             return "Exiting..."
         
+        url="http://127.0.0.1:12345/execute"
+        params = {
+            "command": data
+        }
+        response = requests.get(url, params=params).text
 
-        if self.system_type == 'Windows':
-            if data.startswith('cd'):
-                self.changeDirectory(data)
-                response = self.prompt
-            elif data.startswith('netstat'):
-                response = self.netstat(data)
-            elif data.startswith('net '):
-                response = self.net(data)
-            elif data.startswith('dir'):
-                response = self.dir(data)
-            elif data.startswith('ipconfig'):
-                response = self.ipconfig(data)
-            else:
-                response = "{0} is not recognized as an internal or external command,\noperable program or batch file".format(data)
-        else:
-            if data.startswith('cd'):
-                self.changeDirectoryLinux(data)
-                response = self.prompt
-            elif data.startswith('netstat'):
-                response = self.netstatLinux(data)
-            elif data.startswith('ls'):
-                response = self.ls(data)
-            elif data.startswith('ifconfig'):
-                response = self.ifconfig(data)
-            else:
-                response = "{0}: command not found".format(data)
+        # if self.system_type == 'Windows':
+        #     if data.startswith('cd'):
+        #         self.changeDirectory(data)
+        #         response = self.prompt
+        #     elif data.startswith('netstat'):
+        #         response = self.netstat(data)
+        #     elif data.startswith('net '):
+        #         response = self.net(data)
+        #     elif data.startswith('dir'):
+        #         response = self.dir(data)
+        #     elif data.startswith('ipconfig'):
+        #         response = self.ipconfig(data)
+        #     else:
+        #         response = "{0} is not recognized as an internal or external command,\noperable program or batch file".format(data)
+        # else:
+        #     if data.startswith('cd'):
+        #         self.changeDirectoryLinux(data)
+        #         response = self.prompt
+        #     elif data.startswith('netstat'):
+        #         response = self.netstatLinux(data)
+        #     elif data.startswith('ls'):
+        #         response = self.ls(data)
+        #     elif data.startswith('ifconfig'):
+        #         response = self.ifconfig(data)
+        #     else:
+        #         response = "{0}: command not found".format(data)
         
         return "{0}\n{1}".format(response, self.prompt)
 
